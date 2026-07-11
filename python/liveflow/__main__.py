@@ -113,6 +113,8 @@ def _print_help() -> None:
   {g}--dashboard-port{r} {y}PORT{r}   Bind dashboard to a specific port (default: random)
   {g}--no-open{r}                Don't open the browser automatically
   {g}--python{r} {y}PYTHON{r}        Python interpreter for agent subprocess
+  {g}--origin{r} {y}HOST{r}          Allow an Origin host beyond loopback (repeatable)
+                        {d}e.g. tailnet FQDN for tailscale serve{r}
 
 {b}Commands:{r}
   {g}--help{r}, {g}-h{r}      Show this help message
@@ -126,6 +128,9 @@ def _print_help() -> None:
 
   {d}# Pass extra args through to your agent{r}
   {g}liveflow agent.py dev --log-level DEBUG{r}
+
+  {d}# Allow tailnet access via tailscale serve{r}
+  {g}liveflow --origin myhost.example.ts.net agent.py dev{r}
 
 {b}Source:{r}
   {d}github.com/21lakshh/Liveflow{r}
@@ -150,6 +155,7 @@ def _parse_liveflow_flags(argv: list[str]) -> tuple[dict, list[str]]:
         "no_open": False,
         "python_path": None,
         "script": None,
+        "origins": [],
     }
     remaining = []
     i = 0
@@ -203,6 +209,20 @@ def _parse_liveflow_flags(argv: list[str]) -> tuple[dict, list[str]]:
 
             if arg.startswith("--python="):
                 flags["python_path"] = arg.split("=", 1)[1]
+                i += 1
+                continue
+
+            if arg == "--origin":
+                i += 1
+                if i >= len(argv):
+                    print("Error: --origin requires a value", file=sys.stderr)
+                    sys.exit(1)
+                flags["origins"].append(argv[i])
+                i += 1
+                continue
+
+            if arg.startswith("--origin="):
+                flags["origins"].append(arg.split("=", 1)[1])
                 i += 1
                 continue
 
@@ -293,6 +313,7 @@ def main() -> None:
         --dashboard-port PORT   Bind dashboard to a specific port
         --no-open               Don't open the browser
         --python PYTHON_PATH    Python interpreter for agent subprocess
+        --origin HOST           Allow an additional Origin host (repeatable)
     """
     _setup_logging()
 
@@ -341,7 +362,7 @@ def main() -> None:
     logger.info("Starting Liveflow server...")
 
     from .ws_server import start_server
-    server = start_server(port=flags["dashboard_port"], spa_dir=spa_dir)
+    server = start_server(port=flags["dashboard_port"], spa_dir=spa_dir, extra_origins=flags["origins"] or None)
     atexit.register(server.stop)
 
     flags["remaining"] = remaining[remaining.index(_script_token) + 1:]

@@ -27,17 +27,20 @@ class LiveflowServer:
         server.stop()          # clean shutdown
     """
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 0, spa_dir: Optional[str] = None):
+    def __init__(self, host: str = "127.0.0.1", port: int = 0, spa_dir: Optional[str] = None, extra_origins: Optional[list[str]] = None):
         """
         Args:
             host: Bind address. 127.0.0.1 = localhost only (secure).
             port: Port number. 0 = OS picks a random available port.
             spa_dir: Path to the SPA build directory for static HTTP serving.
                      None disables static serving (WebSocket-only mode).
+            extra_origins: Additional Origin hosts to allow beyond loopback
+                           (e.g. tailnet FQDN for tailscale serve).
         """
         self._host = host
         self._port = port
         self._spa_dir = spa_dir
+        self._extra_origins = extra_origins or []
         self._actual_port: Optional[int] = None
 
         # Connected WebSocket clients (dashboard, child forwarders)
@@ -136,7 +139,7 @@ class LiveflowServer:
     async def _serve(self) -> None:
         """Async server main: start WebSocket server + broadcast loop."""
         # Create the HTTP/WS request router
-        process_request = create_process_request(spa_dir=self._spa_dir)
+        process_request = create_process_request(spa_dir=self._spa_dir, extra_origins=self._extra_origins)
 
         # Start the WebSocket server with process_request for static HTTP
         self._server = await ws_serve(
@@ -262,9 +265,9 @@ def get_server() -> Optional[LiveflowServer]:
     return _server
 
 
-def start_server(host: str = "127.0.0.1", port: int = 0, spa_dir: Optional[str] = None) -> LiveflowServer:
+def start_server(host: str = "127.0.0.1", port: int = 0, spa_dir: Optional[str] = None, extra_origins: Optional[list[str]] = None) -> LiveflowServer:
     """Create and start the global Liveflow server. Returns the server instance."""
     global _server
-    _server = LiveflowServer(host=host, port=port, spa_dir=spa_dir)
+    _server = LiveflowServer(host=host, port=port, spa_dir=spa_dir, extra_origins=extra_origins)
     _server.start()
     return _server

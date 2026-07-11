@@ -165,12 +165,13 @@ def _resolve_static_path(spa_dir: str, request_path: str) -> tuple[str, Optional
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "[::1]", "::1"})
 
 
-def _validate_origin(origin: Optional[str]) -> bool:
+def _validate_origin(origin: Optional[str], extra_origins: Optional[frozenset[str]] = None) -> bool:
     """
-    Validate that the Origin header belongs to a loopback address.
+    Validate that the Origin header belongs to a loopback address
+    or one of the extra_origins (e.g. tailnet FQDN for tailscale serve).
 
     Allows missing/empty Origin (non-browser or internal clients).
-    Rejects non-loopback browser origins.
+    Rejects other browser origins unless in extra_origins.
     """
     if not origin:
         return True  # missing/empty = non-browser client
@@ -194,7 +195,12 @@ def _validate_origin(origin: Optional[str]) -> bool:
     except Exception:
         return False
 
-    return host.lower() in _LOOPBACK_HOSTS
+    host_lower = host.lower()
+    if host_lower in _LOOPBACK_HOSTS:
+        return True
+    if extra_origins and host_lower in extra_origins:
+        return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +246,7 @@ def find_spa_dir() -> Optional[str]:
 # process_request factory
 # ---------------------------------------------------------------------------
 
-def create_process_request(spa_dir: Optional[str]):
+def create_process_request(spa_dir: Optional[str], extra_origins: Optional[list[str]] = None):
     """
     Create a process_request callback for websockets.serve.
 
@@ -250,7 +256,11 @@ def create_process_request(spa_dir: Optional[str]):
 
     WebSocket upgrades on /ws get Origin validation.
     All other paths get static file serving from *spa_dir*.
+
+    Args:
+        extra_origins: Additional Origin hosts to allow beyond loopback.
     """
+    _extra_hosts: frozenset[str] | None = frozenset(h.lower() for h in extra_origins) if extra_origins else None
 
     async def _handler(connection, request: Request) -> Optional[Response]:
         path = request.path
@@ -259,7 +269,7 @@ def create_process_request(spa_dir: Optional[str]):
         # --- WebSocket path ---
         if path.split("?")[0] == "/ws":
             origin = headers.get("Origin")
-            if not _validate_origin(origin):
+            if not _validate_origin(origin, extra_origins=_extra_hosts):
                 logger.warning(f"Rejected WS connection from Origin: {origin}")
                 return Response(
                     403,

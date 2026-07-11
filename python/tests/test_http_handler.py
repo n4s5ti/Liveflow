@@ -479,6 +479,46 @@ class TestProcessRequest:
         assert resp is None
 
     @pytest.mark.asyncio
+    async def test_ws_path_with_extra_origin_allowed(self, tmp_path):
+        """WebSocket /ws with extra origin (e.g. tailnet FQDN) is allowed."""
+        root = str(tmp_path)
+        handler = create_process_request(spa_dir=root, extra_origins=["myhost.example.ts.net"])
+
+        from websockets.http11 import Request
+        from websockets.datastructures import Headers
+        headers = Headers({"Origin": "https://myhost.example.ts.net:8453"})
+        req = Request(path="/ws", headers=headers)
+        resp = await handler(None, req)
+        assert resp is None
+
+    @pytest.mark.asyncio
+    async def test_ws_extra_origin_still_rejects_hostile(self, tmp_path):
+        """Extra origins don't bypass the check — hostile origins still rejected."""
+        root = str(tmp_path)
+        handler = create_process_request(spa_dir=root, extra_origins=["myhost.example.ts.net"])
+
+        from websockets.http11 import Request
+        from websockets.datastructures import Headers
+        headers = Headers({"Origin": "http://evil.com"})
+        req = Request(path="/ws", headers=headers)
+        resp = await handler(None, req)
+        assert resp is not None
+        assert resp.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_ws_extra_origin_case_insensitive(self, tmp_path):
+        """Extra origin matching is case-insensitive per RFC 1035."""
+        root = str(tmp_path)
+        handler = create_process_request(spa_dir=root, extra_origins=["MyHost.Example.TS.NET"])
+
+        from websockets.http11 import Request
+        from websockets.datastructures import Headers
+        headers = Headers({"Origin": "https://myhost.example.ts.net"})
+        req = Request(path="/ws", headers=headers)
+        resp = await handler(None, req)
+        assert resp is None
+
+    @pytest.mark.asyncio
     async def test_http_path_with_hostile_origin_still_serves(self, tmp_path):
         """Static file requests don't validate Origin — only WS does."""
         root = str(tmp_path)
