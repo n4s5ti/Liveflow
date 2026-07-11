@@ -58,13 +58,19 @@ export function useAudioVolume(
   mediaStream?: MediaStream | null,
   options: AudioAnalyserOptions = { fftSize: 32, smoothingTimeConstant: 0 }
 ) {
-  const [volume, setVolume] = useState(0)
+  // Derive volume from mediaStream: 0 when no stream, tracked value when streaming
+  const [activeVolume, setActiveVolume] = useState(0)
   const volumeRef = useRef(0)
   const frameId = useRef<number | undefined>(undefined)
 
-  // Memoize options to prevent unnecessary re-renders
+  // Memoize options to prevent unnecessary re-renders - construct stable object from individual deps
   const memoizedOptions = useMemo(
-    () => options,
+    () => ({
+      fftSize: options.fftSize,
+      smoothingTimeConstant: options.smoothingTimeConstant,
+      minDecibels: options.minDecibels,
+      maxDecibels: options.maxDecibels,
+    }),
     [
       options.fftSize,
       options.smoothingTimeConstant,
@@ -75,7 +81,6 @@ export function useAudioVolume(
 
   useEffect(() => {
     if (!mediaStream) {
-      setVolume(0)
       volumeRef.current = 0
       return
     }
@@ -103,7 +108,7 @@ export function useAudioVolume(
         // Only update state if volume changed significantly
         if (Math.abs(newVolume - volumeRef.current) > 0.01) {
           volumeRef.current = newVolume
-          setVolume(newVolume)
+          setActiveVolume(newVolume)
         }
         lastUpdate = timestamp
       }
@@ -117,9 +122,13 @@ export function useAudioVolume(
       if (frameId.current) {
         cancelAnimationFrame(frameId.current)
       }
+      volumeRef.current = 0
+      setActiveVolume(0)
     }
   }, [mediaStream, memoizedOptions])
 
+  // During render: no stream → 0; streaming → tracked value
+  const volume = mediaStream ? activeVolume : 0
   return volume
 }
 
@@ -158,8 +167,22 @@ export function useMultibandVolume(
   mediaStream?: MediaStream | null,
   options: MultiBandVolumeOptions = {}
 ) {
+  // Construct merged options from individual deps — no spread of `options` to satisfy React Compiler
   const opts = useMemo(
-    () => ({ ...multibandDefaults, ...options }),
+    () => ({
+      bands: options.bands ?? multibandDefaults.bands,
+      loPass: options.loPass ?? multibandDefaults.loPass,
+      hiPass: options.hiPass ?? multibandDefaults.hiPass,
+      updateInterval: options.updateInterval ?? multibandDefaults.updateInterval,
+      analyserOptions: {
+        fftSize: options.analyserOptions?.fftSize ?? multibandDefaults.analyserOptions?.fftSize,
+        smoothingTimeConstant:
+          options.analyserOptions?.smoothingTimeConstant ??
+          multibandDefaults.analyserOptions?.smoothingTimeConstant,
+        minDecibels: options.analyserOptions?.minDecibels ?? multibandDefaults.analyserOptions?.minDecibels,
+        maxDecibels: options.analyserOptions?.maxDecibels ?? multibandDefaults.analyserOptions?.maxDecibels,
+      },
+    }),
     [
       options.bands,
       options.loPass,
@@ -179,12 +202,7 @@ export function useMultibandVolume(
   const frameId = useRef<number | undefined>(undefined)
 
   useEffect(() => {
-    if (!mediaStream) {
-      const emptyBands = new Array(opts.bands).fill(0)
-      setFrequencyBands(emptyBands)
-      bandsRef.current = emptyBands
-      return
-    }
+    if (!mediaStream) return
 
     const { analyser, cleanup } = createAudioAnalyser(
       mediaStream,
@@ -249,6 +267,10 @@ export function useMultibandVolume(
       if (frameId.current) {
         cancelAnimationFrame(frameId.current)
       }
+      // Reset bands when stream disconnects (cleanup fires before deps change)
+      const emptyBands = new Array(opts.bands).fill(0)
+      bandsRef.current = emptyBands
+      setFrequencyBands(emptyBands)
     }
   }, [mediaStream, opts])
 
@@ -269,7 +291,10 @@ export const useBarAnimator = (
   interval: number
 ): number[] => {
   const indexRef = useRef(0)
-  const [currentFrame, setCurrentFrame] = useState<number[]>([])
+  const [frameState, setFrameState] = useState<{
+    sequence: number[][]
+    frame: number[]
+  }>(() => ({ sequence: [], frame: [] }))
   const animationFrameId = useRef<number | null>(null)
 
   // Memoize sequence generation
@@ -287,10 +312,6 @@ export const useBarAnimator = (
 
   useEffect(() => {
     indexRef.current = 0
-    setCurrentFrame(sequence[0] || [])
-  }, [sequence])
-
-  useEffect(() => {
     let startTime = performance.now()
 
     const animate = (time: DOMHighResTimeStamp) => {
@@ -298,7 +319,10 @@ export const useBarAnimator = (
 
       if (timeElapsed >= interval) {
         indexRef.current = (indexRef.current + 1) % sequence.length
-        setCurrentFrame(sequence[indexRef.current] || [])
+        setFrameState({
+          sequence,
+          frame: sequence[indexRef.current] || [],
+        })
         startTime = time
       }
 
@@ -314,7 +338,9 @@ export const useBarAnimator = (
     }
   }, [interval, sequence])
 
-  return currentFrame
+  return frameState.sequence === sequence
+    ? frameState.frame
+    : sequence[0] || []
 }
 
 // Memoize sequence generators
@@ -378,23 +404,26 @@ const BarVisualizerComponent = forwardRef<HTMLDivElement, BarVisualizerProps>(
       hiPass: 200,
     })
 
-    // Generate fake volume data for demo mode using refs to avoid state updates
+    // Generate fake volume data for demo mode
     const fakeVolumeBandsRef = useRef<number[]>(new Array(barCount).fill(0.2))
     const [fakeVolumeBands, setFakeVolumeBands] = useState<number[]>(() =>
       new Array(barCount).fill(0.2)
     )
     const fakeAnimationRef = useRef<number | undefined>(undefined)
 
+    // Derive display value during render: default bands when not actively animating
+    const shouldAnimateFake = demo && (state === "speaking" || state === "listening")
+    const defaultFakeBands = useMemo(
+      () => new Array(barCount).fill(0.2),
+      [barCount]
+    )
+    const displayFakeVolumeBands = shouldAnimateFake
+      ? fakeVolumeBands
+      : defaultFakeBands
+
     // Animate fake volume bands for speaking and listening states
     useEffect(() => {
-      if (!demo) return
-
-      if (state !== "speaking" && state !== "listening") {
-        const bands = new Array(barCount).fill(0.2)
-        fakeVolumeBandsRef.current = bands
-        setFakeVolumeBands(bands)
-        return
-      }
+      if (!shouldAnimateFake) return
 
       let lastUpdate = 0
       const updateInterval = 50
@@ -438,13 +467,14 @@ const BarVisualizerComponent = forwardRef<HTMLDivElement, BarVisualizerProps>(
         if (fakeAnimationRef.current) {
           cancelAnimationFrame(fakeAnimationRef.current)
         }
+        fakeVolumeBandsRef.current = new Array(barCount).fill(0.2)
       }
-    }, [demo, state, barCount])
+    }, [shouldAnimateFake, barCount])
 
     // Use fake or real volume data based on demo mode
     const volumeBands = useMemo(
-      () => (demo ? fakeVolumeBands : realVolumeBands),
-      [demo, fakeVolumeBands, realVolumeBands]
+      () => (demo ? displayFakeVolumeBands : realVolumeBands),
+      [demo, displayFakeVolumeBands, realVolumeBands]
     )
 
     // Animation sequencing

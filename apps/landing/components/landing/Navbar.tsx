@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import Link from "next/link";
 import Image from "next/image";
 import { Github } from "lucide-react";
 
@@ -13,7 +14,7 @@ const Navbar = () => {
       <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
 
         {/* Brand */}
-        <a href="/" className="flex items-center gap-2.5 group">
+        <Link href="/" className="flex items-center gap-2.5 group">
           <Image
             src="/liveflow.png"
             alt="Liveflow Logo"
@@ -22,7 +23,7 @@ const Navbar = () => {
             className="rounded-sm opacity-90 group-hover:opacity-100 transition-opacity"
           />
           <span className="font-semibold text-sm tracking-tight text-foreground">Liveflow</span>
-        </a>
+        </Link>
 
         {/* Nav links */}
         <div className="hidden sm:flex items-center gap-7 text-sm text-muted-foreground">
