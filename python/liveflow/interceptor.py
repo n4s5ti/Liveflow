@@ -424,7 +424,7 @@ def _patched_update_agent(self: Any, agent: Any) -> None:
     
     This is called when a tool returns a tuple[Agent, str] to trigger a handoff.
     We capture the old → new agent transition and broadcast a HandoffMessage
-    so the VS Code graph can animate the transfer.
+    so the dashboard graph can animate the transfer.
     """
     server = _get_broadcaster()
     session_id = _get_session_id(self)

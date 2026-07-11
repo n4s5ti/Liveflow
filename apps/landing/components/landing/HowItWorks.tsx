@@ -2,7 +2,7 @@
 
 import { motion, useInView } from "framer-motion";
 import { useRef, useState } from "react";
-import { Copy, Check, Puzzle, ExternalLink } from "lucide-react";
+import { Copy, Check, Download, ExternalLink } from "lucide-react";
 
 function CommandBlock({ command }: { command: string }) {
   const [copied, setCopied] = useState(false);
@@ -36,15 +36,18 @@ const steps = [
   },
   {
     num: "02",
-    title: "Install the VS Code Extension",
-    desc: "Visualize your agent's state directly inside your editor.",
-    isButton: true,
+    title: "Run Your Agent",
+    desc: "Drop-in replacement for your normal run command. Your browser dashboard opens automatically.",
+    command: "liveflow agent.py dev",
   },
   {
     num: "03",
-    title: "Run Your Agent",
-    desc: "Drop-in replacement for your normal run command. No code changes needed.",
-    command: "liveflow agent.py dev",
+    title: "Download Standalone App",
+    desc: "Get Liveflow as a single-file executable. Your agent still uses its own Python environment.",
+    isButton: true,
+    buttonHref: "https://github.com/21lakshh/Liveflow/releases",
+    buttonLabel: "Get Liveflow",
+    buttonIcon: Download,
   },
 ];
 
@@ -93,16 +96,16 @@ const HowItWorks = () => {
 
                   {step.command && <CommandBlock command={step.command} />}
 
-                  {step.isButton && (
+                  {step.isButton && step.buttonIcon && (
                     <div className="mt-4">
                       <a
-                        href="https://marketplace.visualstudio.com/items?itemName=liveflow.liveflow"
+                        href={step.buttonHref}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-2.5 rounded-md border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition-all hover:border-primary hover:text-primary"
                       >
-                        <Puzzle size={15} className="text-primary" />
-                        Install VS Code Extension
+                        <step.buttonIcon size={15} className="text-primary" />
+                        {step.buttonLabel}
                         <ExternalLink size={12} className="text-muted-foreground" />
                       </a>
                     </div>

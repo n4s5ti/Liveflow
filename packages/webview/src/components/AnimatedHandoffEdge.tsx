@@ -101,7 +101,7 @@ export function AnimatedHandoffEdge({
               color: isAnimated ? "#22c55e" : "#888",
               background: isAnimated
                 ? "rgba(34, 197, 94, 0.15)"
-                : "var(--vscode-editor-background, #1e1e1e)",
+                : "var(--liveflow-editor-background, #1e1e1e)",
               padding: "2px 6px",
               borderRadius: 4,
               border: `1px solid ${isAnimated ? "#22c55e44" : "#333"}`,

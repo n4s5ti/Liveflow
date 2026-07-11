@@ -6,6 +6,8 @@ import os
 import site
 import sys
 import runpy
+import webbrowser
+from typing import Optional
 
 
 # Configure Liveflow logging
@@ -76,14 +78,16 @@ def _setup_logging() -> None:
     logger.setLevel(logging.INFO)
 
 
-def _print_banner(port: int, script: str) -> None:
+def _print_banner(port: int, script: str, flags: dict | None = None) -> None:
     """Print a startup banner so the user knows Liveflow is active."""
     print("\033[36m" + "=" * 60 + "\033[0m")
     print("\033[36m  🔍 Liveflow — LiveKit Agent Visualizer\033[0m")
-    print(f"\033[36m  WebSocket: ws://127.0.0.1:{port}\033[0m")
-    print(f"\033[36m  Script:    {script}\033[0m")
-    print(f"\033[36m  Args:      {' '.join(sys.argv[2:]) if len(sys.argv) > 2 else '(none)'}\033[0m")
-    print("\033[36m  Open the Liveflow panel in VS Code to visualize.\033[0m")
+    print(f"\033[36m  Dashboard:  http://127.0.0.1:{port}\033[0m")
+    print(f"\033[36m  WebSocket:  ws://127.0.0.1:{port}/ws\033[0m")
+    print(f"\033[36m  Script:     {script}\033[0m")
+    if flags:
+        print(f"\033[36m  Args:       {' '.join(flags.get('remaining', []))}"
+              if flags.get('remaining') else f"\033[36m  Args:       (none)")
     print("\033[36m" + "=" * 60 + "\033[0m")
 
 
@@ -102,8 +106,13 @@ def _print_help() -> None:
 {d}  Real-time debugger for LiveKit voice agents. No code changes needed.{r}
 
 {b}Usage:{r}
-  {g}liveflow{r} {y}<agent.py>{r} {y}[mode]{r} {d}[args...]{r}
+  {g}liveflow{r} {d}[flags]{r} {y}<agent.py>{r} {y}[mode]{r} {d}[args...]{r}
   {g}liveflow{r} {y}<command>{r}
+
+{b}Flags (before script):{r}
+  {g}--dashboard-port{r} {y}PORT{r}   Bind dashboard to a specific port (default: random)
+  {g}--no-open{r}                Don't open the browser automatically
+  {g}--python{r} {y}PYTHON{r}        Python interpreter for agent subprocess
 
 {b}Commands:{r}
   {g}--help{r}, {g}-h{r}      Show this help message
@@ -112,31 +121,185 @@ def _print_help() -> None:
 {b}Examples:{r}
   {g}liveflow agent.py dev{r}
 
+  {d}# Custom port, no browser{r}
+  {g}liveflow --dashboard-port 8765 --no-open agent.py dev{r}
+
   {d}# Pass extra args through to your agent{r}
   {g}liveflow agent.py dev --log-level DEBUG{r}
-
-{b}VS Code Extension:{r}
-  Install the Liveflow extension and click {b}▶ Run with Liveflow{r}
-  in the editor title bar — no terminal command needed.
-
-  {d}marketplace.visualstudio.com/items?itemName=liveflow.liveflow{r}
 
 {b}Source:{r}
   {d}github.com/21lakshh/Liveflow{r}
 """)
 
 
+
+# ---------------------------------------------------------------------------
+# Flag parsing: extract Liveflow flags before the user's script
+# ---------------------------------------------------------------------------
+
+def _parse_liveflow_flags(argv: list[str]) -> tuple[dict, list[str]]:
+    """
+    Extract Liveflow flags from argv, stopping at the first non-flag
+    argument (the user's script). Everything after the script is passed
+    through unchanged.
+
+    Returns (flags_dict, remaining_argv).
+    """
+    flags = {
+        "dashboard_port": 0,
+        "no_open": False,
+        "python_path": None,
+        "script": None,
+    }
+    remaining = []
+    i = 0
+    script_found = False
+
+    while i < len(argv):
+        arg = argv[i]
+
+        if not script_found:
+            if arg == "--dashboard-port":
+                i += 1
+                if i >= len(argv):
+                    print("Error: --dashboard-port requires a value", file=sys.stderr)
+                    sys.exit(1)
+                try:
+                    port = int(argv[i])
+                    if port < 0 or port > 65535:
+                        raise ValueError
+                    flags["dashboard_port"] = port
+                except ValueError:
+                    print(f"Error: Invalid port number: {argv[i]}", file=sys.stderr)
+                    sys.exit(1)
+                i += 1
+                continue
+
+            if arg.startswith("--dashboard-port="):
+                try:
+                    port = int(arg.split("=", 1)[1])
+                    if port < 0 or port > 65535:
+                        raise ValueError
+                    flags["dashboard_port"] = port
+                except ValueError:
+                    print(f"Error: Invalid port number: {arg.split('=', 1)[1]}", file=sys.stderr)
+                    sys.exit(1)
+                i += 1
+                continue
+
+            if arg == "--no-open":
+                flags["no_open"] = True
+                i += 1
+                continue
+
+            if arg == "--python":
+                i += 1
+                if i >= len(argv):
+                    print("Error: --python requires a value", file=sys.stderr)
+                    sys.exit(1)
+                flags["python_path"] = argv[i]
+                i += 1
+                continue
+
+            if arg.startswith("--python="):
+                flags["python_path"] = arg.split("=", 1)[1]
+                i += 1
+                continue
+
+            # First non-flag argument is the script
+            if not arg.startswith("-"):
+                flags["script"] = arg
+                script_found = True
+                remaining.append(arg)
+                i += 1
+                continue
+
+        # Everything else (including unknown flags) is passed through
+        remaining.append(arg)
+        i += 1
+
+    return flags, remaining
+
+
+# ---------------------------------------------------------------------------
+# Python interpreter resolution
+# ---------------------------------------------------------------------------
+
+def _resolve_python_interpreter(explicit: Optional[str]) -> str:
+    """
+    Resolve the Python interpreter to use for launching agent subprocess.
+
+    Precedence:
+    1. Explicit --python flag
+    2. VIRTUAL_ENV environment variable
+    3. "python" from PATH
+    """
+    if explicit:
+        return explicit
+
+    venv = os.environ.get("VIRTUAL_ENV")
+    if venv:
+        return os.path.join(venv, "bin", "python")
+
+    return "python"
+
+
+# ---------------------------------------------------------------------------
+# Browser open
+# ---------------------------------------------------------------------------
+
+def _maybe_open_browser(port: int, no_open: bool = False, _opener=None) -> None:
+    """
+    Open the dashboard in the default browser, unless --no-open was set.
+
+    Args:
+        port: The dashboard port.
+        no_open: If True, suppress browser open.
+        _opener: Test injection point for webbrowser.open.
+    """
+    if no_open:
+        return
+    url = f"http://127.0.0.1:{port}"
+    opener = _opener or webbrowser.open
+    try:
+        opener(url)
+        logger.info(f"Dashboard opened at {url}")
+    except Exception as e:
+        logger.debug(f"Could not open browser: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Frozen mode detection
+# ---------------------------------------------------------------------------
+
+def _is_frozen() -> bool:
+    """Return True if running as a PyInstaller onefile executable."""
+    return getattr(sys, "frozen", False)
+
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
 def main() -> None:
     """
     Main entry point.
-    
+
     Parses args, starts the server + hook, then runs the user's script.
     The user's script gets sys.argv as if it was run directly:
         liveflow agent.py dev  →  sys.argv = ["agent.py", "dev"]
+
+    Flags consumed before the script:
+        --dashboard-port PORT   Bind dashboard to a specific port
+        --no-open               Don't open the browser
+        --python PYTHON_PATH    Python interpreter for agent subprocess
     """
     _setup_logging()
 
-    # ---- Handle flags / no args ----
+    # ---- Parse flags ----
+    flags, remaining = _parse_liveflow_flags(sys.argv[1:])
+
+    # ---- Handle help / version / no script ----
     if len(sys.argv) < 2 or sys.argv[1] in ("--help", "-h", "help"):
         _print_help()
         sys.exit(0)
@@ -145,9 +308,16 @@ def main() -> None:
         from . import __version__
         print(f"liveflow {__version__}")
         sys.exit(0)
-    
-    script_path = sys.argv[1]
-    
+
+    if flags["script"] is None:
+        _print_help()
+        sys.exit(0)
+
+    script_path = flags["script"]
+    # Save original relative token before absolutizing — used later for
+    # argv extraction from remaining (which preserves original tokens).
+    _script_token = script_path
+
     # Validate the script exists
     if not os.path.isfile(script_path):
         abs_path = os.path.join(os.getcwd(), script_path)
@@ -156,26 +326,39 @@ def main() -> None:
         else:
             print(f"Error: Script not found: {script_path}")
             sys.exit(1)
-    
+
     script_path = os.path.abspath(script_path)
-    
-    # ---- Step 1: Start WebSocket server ----
-    logger.info("Starting Liveflow WebSocket server...")
-    
+
+    # ---- Discover SPA directory ----
+    from .http_handler import find_spa_dir
+    spa_dir = find_spa_dir()
+    if spa_dir:
+        logger.info(f"Serving dashboard from {spa_dir}")
+    else:
+        logger.info("No SPA build found — WebSocket-only mode")
+
+    # ---- Step 1: Start WebSocket/HTTP server ----
+    logger.info("Starting Liveflow server...")
+
     from .ws_server import start_server
-    server = start_server()
+    server = start_server(port=flags["dashboard_port"], spa_dir=spa_dir)
     atexit.register(server.stop)
-    
-    _print_banner(server.port, script_path)
-    
+
+    flags["remaining"] = remaining[remaining.index(_script_token) + 1:]
+    _print_banner(server.port, script_path, flags)
+
+    # ---- Open browser ----
+    _maybe_open_browser(server.port, no_open=flags["no_open"])
+
+    # ---- Resolve Python interpreter (used by frozen launcher) ----
+    python_path = _resolve_python_interpreter(flags["python_path"])
+    os.environ["LIVEFLOW_PYTHON"] = python_path
+
     # ---- Step 1b: Scan agent code (static analysis) ----
-    # Parse the user's agent.py with AST to discover ALL agents, tools, and
-    # handoff relationships. Broadcast this as a code_scan message so the
-    # VS Code dashboard can show the full graph immediately.
     logger.info("Scanning agent code for agents and tools...")
     from .code_scanner import scan_agent_file
     from .protocol import AgentInfo, CodeScanMessage, ScannedHandoff
-    
+
     scan_result = scan_agent_file(script_path)
     if scan_result["agents"]:
         scan_msg = CodeScanMessage(
@@ -197,57 +380,42 @@ def main() -> None:
                 for h in scan_result["handoffs"]
             ],
         )
-        # Store on server so it's replayed to new clients
         server.set_initial_scan(scan_msg)
         logger.info(f"Code scan: {len(scan_result['agents'])} agents, {len(scan_result['handoffs'])} handoffs")
-    
+
     # ---- Step 2: Set LIVEFLOW_PORT for child processes ----
-    # LiveKit dev mode spawns the agent in a child process via multiprocessing.
-    # The env var is inherited by child processes and tells proc_main_wrapper
-    # which port to forward events to.
     os.environ["LIVEFLOW_PORT"] = str(server.port)
-    
+
     # ---- Step 3: Install hooks for child processes ----
-    # Two mechanisms are needed:
-    #
-    # A) Direct hook: patches proc_main in THIS process
-    #    → Works when _run_worker runs in-process (--no-reload)
-    #
-    # B) .pth file: patches proc_main in ALL new Python subprocesses
-    #    → Needed because dev mode with reload uses watchfiles.arun_process()
-    #      which spawns _run_worker in a FRESH subprocess (no patches survive)
-    #    → The .pth file triggers liveflow._auto_hook on Python startup
-    #    → _auto_hook checks LIVEFLOW_PORT and installs the child hook
-    #    → Cleaned up on exit
-    
     logger.info("Installing child process hooks...")
-    
-    # A) Direct hook in this process
+
     from .child_hook import install_child_process_hook
     install_child_process_hook()
-    
-    # B) .pth file for subprocess support (watchfiles reload)
+
     pth_path = _install_pth_file()
     if pth_path:
         atexit.register(_uninstall_pth_file, pth_path)
-    
+
     # ---- Step 4: Run the user's script ----
-    # Rewrite sys.argv so the user's script sees: ["agent.py", "dev", ...]
-    sys.argv = sys.argv[1:]
-    
-    # Change directory to the script's directory (so relative imports work)
+    # Remaining args after script become sys.argv for the agent.
+    # Use the original script token (before absolutizing) since remaining
+    # preserves tokens as they appeared on the command line.
+    script_argv = remaining[remaining.index(_script_token):]
+    sys.argv = script_argv
+
     script_dir = os.path.dirname(script_path)
     if script_dir:
         os.chdir(script_dir)
         if script_dir not in sys.path:
             sys.path.insert(0, script_dir)
-    
+
     logger.info(f"Running {os.path.basename(script_path)}...")
-    
+
     try:
         runpy.run_path(script_path, run_name="__main__")
-    except SystemExit:
-        pass
+    except SystemExit as e:
+        if e.code is not None and e.code != 0:
+            raise
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
     except Exception as e:

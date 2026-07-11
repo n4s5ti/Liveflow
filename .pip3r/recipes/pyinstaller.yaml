@@ -1,0 +1,13 @@
+name: pyinstaller
+description: "Pack Python programs into standalone executables"
+executor: system
+binary: uvx
+prependArgs:
+  - "--python"
+  - "3.14"
+  - "--with"
+  - "./python"
+  - "--from"
+  - "pyinstaller"
+  - "pyinstaller"
+notice: "Prerequisites — 1) Build SPA: npm run build -w @liveflow/webview  2) Python 3.14+ required (OBS-718): recipe auto-selects 3.14 via uvx"

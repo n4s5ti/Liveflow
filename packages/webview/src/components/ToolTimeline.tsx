@@ -34,7 +34,7 @@ function ToolCallRow({ call, color, isActive }: { call: ToolCall; color: string;
         marginBottom: 4,
         background: isActive
           ? `${color}11`
-          : "var(--vscode-editor-background, #1e1e1e)",
+          : "var(--liveflow-editor-background, #1e1e1e)",
         borderRadius: "0 6px 6px 0",
         cursor: "pointer",
         transition: "all 0.3s ease",

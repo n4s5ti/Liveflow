@@ -54,7 +54,7 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>) {
   return (
     <div
       style={{
-        background: "var(--vscode-editor-background, #1e1e1e)",
+        background: "var(--liveflow-editor-background, #1e1e1e)",
         border: `2px solid ${isActive ? color : dimmed ? "#333" : "#444"}`,
         borderRadius: 12,
         padding: "12px 16px",
@@ -91,7 +91,7 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>) {
           style={{
             fontWeight: 600,
             fontSize: 14,
-            color: "var(--vscode-editor-foreground, #ccc)",
+            color: "var(--liveflow-editor-foreground, #ccc)",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -193,7 +193,7 @@ function UserNode({ data }: NodeProps<Node<UserNodeData>>) {
   return (
     <div
       style={{
-        background: "var(--vscode-editor-background, #1e1e1e)",
+        background: "var(--liveflow-editor-background, #1e1e1e)",
         border: `2px solid ${isActive ? "#22c55e" : "#555"}`,
         borderRadius: "50%",
         width: 80,

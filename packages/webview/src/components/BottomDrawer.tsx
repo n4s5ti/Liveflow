@@ -27,7 +27,7 @@ export function BottomDrawer() {
         display: "flex",
         flexDirection: "column",
         borderTop: "1px solid #333",
-        background: "var(--vscode-editor-background, #1e1e1e)",
+        background: "var(--liveflow-editor-background, #1e1e1e)",
         transition: "height 0.3s ease",
         height: expanded ? "40vh" : 36,
         minHeight: 36,

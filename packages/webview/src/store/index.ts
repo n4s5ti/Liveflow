@@ -326,13 +326,11 @@ export const useLiveflowStore = create<LiveflowState>((set, get) => ({
 
       // ---- Session end ----
       case "session_end":
-        // Keep the data but mark as disconnected
+        // "connected" represents session liveness (agent pipeline active),
+        // not transport liveness. The browser WebSocket may remain open
+        // after session_end; transport liveness is managed separately by
+        // useWebSocketTransport.
         set({ connected: false });
-        break;
-
-      // ---- Connection status (from extension, not Python) ----
-      case "connection_status":
-        set({ connected: (msg as any).connected });
         break;
 
       default:

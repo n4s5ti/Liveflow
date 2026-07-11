@@ -1,7 +1,7 @@
-
 import React from "react";
 import { ReactFlowProvider } from "@xyflow/react";
-import { useVscodeMessages } from "@/hooks/useVscodeMessages";
+import { useWebSocketTransport } from "@/transport/useWebSocketTransport";
+import type { ConnectionState } from "@/transport/types";
 import { useLiveflowStore } from "@/store";
 import { StateIndicator } from "@/components/StateIndicator";
 import { AgentGraph } from "@/components/AgentGraph";
@@ -9,16 +9,16 @@ import { BottomDrawer } from "@/components/BottomDrawer";
 import { WelcomeView } from "@/components/WelcomeView";
 
 export default function App() {
-  // Initialize the VS Code message bridge
-  useVscodeMessages();
+  // Initialize the browser-native WebSocket transport
+  const { connectionState } = useWebSocketTransport();
 
   // Show welcome screen when no session data has arrived yet
   const hasSession = useLiveflowStore(
-    (s) => s.sessionStarted || s.agents.length > 0
+    (s) => s.sessionStarted || s.agents.length > 0,
   );
 
   if (!hasSession) {
-    return <WelcomeView />;
+    return <WelcomeView connectionState={connectionState} />;
   }
 
   return (
@@ -27,9 +27,9 @@ export default function App() {
         height: "100vh",
         display: "flex",
         flexDirection: "column",
-        background: "var(--vscode-editor-background, #121218)",
-        color: "var(--vscode-editor-foreground, #ccc)",
-        fontFamily: "var(--vscode-font-family, system-ui, sans-serif)",
+        background: "var(--liveflow-editor-background, #121218)",
+        color: "var(--liveflow-editor-foreground, #ccc)",
+        fontFamily: "var(--liveflow-font-family, system-ui, sans-serif)",
         overflow: "hidden",
       }}
     >

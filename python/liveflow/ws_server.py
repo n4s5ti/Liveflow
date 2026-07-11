@@ -3,15 +3,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
-import signal
-import tempfile
 import threading
 from typing import Any, Optional, Set
 
 import websockets
+from websockets.asyncio.server import serve as ws_serve
 from websockets.server import ServerConnection
 
+from .http_handler import create_process_request
 from .protocol import BaseMessage, PongMessage
 
 logger = logging.getLogger("liveflow.ws_server")
@@ -19,27 +18,29 @@ logger = logging.getLogger("liveflow.ws_server")
 
 class LiveflowServer:
     """
-    Manages the WebSocket server lifecycle.
-    
+    Manages the WebSocket/HTTP server lifecycle.
+
     Usage:
         server = LiveflowServer()
         server.start()         # starts in a background thread
-        server.broadcast(msg)  # send a message to all connected VS Code clients
+        server.broadcast(msg)  # send a message to all connected dashboard clients
         server.stop()          # clean shutdown
     """
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 0):
+    def __init__(self, host: str = "127.0.0.1", port: int = 0, spa_dir: Optional[str] = None):
         """
         Args:
             host: Bind address. 127.0.0.1 = localhost only (secure).
             port: Port number. 0 = OS picks a random available port.
+            spa_dir: Path to the SPA build directory for static HTTP serving.
+                     None disables static serving (WebSocket-only mode).
         """
         self._host = host
         self._port = port
+        self._spa_dir = spa_dir
         self._actual_port: Optional[int] = None
-        self._port_file: Optional[str] = None
 
-        # Connected WebSocket clients (the VS Code extension)
+        # Connected WebSocket clients (dashboard, child forwarders)
         self._clients: Set[ServerConnection] = set()
 
         # Thread-safe queue: interceptor pushes JSON strings, server broadcasts them
@@ -62,11 +63,6 @@ class LiveflowServer:
         """The actual port the server is listening on (available after start)."""
         return self._actual_port
 
-    @property
-    def port_file(self) -> Optional[str]:
-        """Path to the temp file containing the port number."""
-        return self._port_file
-
     def start(self) -> int:
         """
         Start the WebSocket server in a background daemon thread.
@@ -83,9 +79,6 @@ class LiveflowServer:
         if self._actual_port is None:
             raise RuntimeError("Liveflow WebSocket server failed to start")
 
-        # Write port to a temp file so VS Code extension can find it
-        self._write_port_file()
-        
         logger.info(f"Liveflow server ready on ws://{self._host}:{self._actual_port}")
         return self._actual_port
 
@@ -124,7 +117,6 @@ class LiveflowServer:
             self._loop.call_soon_threadsafe(self._stop_event.set)
         if self._thread:
             self._thread.join(timeout=5)
-        self._cleanup_port_file()
         logger.info("Liveflow server stopped")
 
     # ---- Internal methods ----
@@ -143,11 +135,15 @@ class LiveflowServer:
 
     async def _serve(self) -> None:
         """Async server main: start WebSocket server + broadcast loop."""
-        # Start the WebSocket server
-        self._server = await websockets.serve(
+        # Create the HTTP/WS request router
+        process_request = create_process_request(spa_dir=self._spa_dir)
+
+        # Start the WebSocket server with process_request for static HTTP
+        self._server = await ws_serve(
             self._handle_client,
             self._host,
             self._port,
+            process_request=process_request,
         )
 
         # Discover the actual port (important when port=0)
@@ -170,14 +166,14 @@ class LiveflowServer:
     async def _handle_client(self, websocket: ServerConnection) -> None:
         """
         Handle a new WebSocket client connection.
-        
+
         Clients can be:
-        - VS Code extension (consumer) — sends pings, receives broadcasts
+        - Dashboard (consumer) — sends pings, receives broadcasts
         - Child process forwarder (producer) — sends intercepted events
-        
+
         Any non-ping message received from a client is re-queued for broadcast
         to all OTHER clients. This way, events from child process forwarders
-        reach the VS Code extension.
+        reach the dashboard.
         """
         self._clients.add(websocket)
         client_addr = websocket.remote_address
@@ -199,11 +195,11 @@ class LiveflowServer:
                     msg_type = data.get("type", "")
                     
                     if msg_type == "ping":
-                        # Respond to pings (from VS Code extension)
+                        # Respond to pings (from dashboard)
                         pong = PongMessage(session_id="")
                         await websocket.send(pong.model_dump_json())
                     else:
-                        # Re-broadcast to all OTHER clients (from child forwarder → VS Code)
+                        # Re-broadcast to all OTHER clients (from child forwarder → dashboard)
                         raw_str = raw_message if isinstance(raw_message, str) else raw_message.decode("utf-8")
                         disconnected = set()
                         for client in self._clients.copy():
@@ -256,30 +252,6 @@ class LiveflowServer:
             except Exception as e:
                 logger.warning(f"Broadcast error: {e}")
 
-    def _write_port_file(self) -> None:
-        """
-        Write the server port to a temp file.
-        
-        The VS Code extension watches for files matching /tmp/liveflow-*.port
-        to discover the server port. The PID is included in the filename
-        so multiple Liveflow sessions don't conflict.
-        """
-        pid = os.getpid()
-        self._port_file = os.path.join(tempfile.gettempdir(), f"liveflow-{pid}.port")
-        
-        with open(self._port_file, "w") as f:
-            f.write(str(self._actual_port))
-        
-        logger.debug(f"Port file written: {self._port_file}")
-
-    def _cleanup_port_file(self) -> None:
-        """Remove the temp port file on shutdown."""
-        if self._port_file and os.path.exists(self._port_file):
-            try:
-                os.unlink(self._port_file)
-            except OSError:
-                pass
-
 
 # Module-level singleton (created by the launcher, used by the interceptor)
 _server: Optional[LiveflowServer] = None
@@ -290,9 +262,9 @@ def get_server() -> Optional[LiveflowServer]:
     return _server
 
 
-def start_server(host: str = "127.0.0.1", port: int = 0) -> LiveflowServer:
+def start_server(host: str = "127.0.0.1", port: int = 0, spa_dir: Optional[str] = None) -> LiveflowServer:
     """Create and start the global Liveflow server. Returns the server instance."""
     global _server
-    _server = LiveflowServer(host=host, port=port)
+    _server = LiveflowServer(host=host, port=port, spa_dir=spa_dir)
     _server.start()
     return _server

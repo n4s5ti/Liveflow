@@ -63,7 +63,7 @@ export function ToolNode({ data }: NodeProps<Node<ToolNodeData>>) {
             fontSize: 11,
             fontFamily: "monospace",
             fontWeight: 600,
-            color: "var(--vscode-editor-foreground, #ccc)",
+            color: "var(--liveflow-editor-foreground, #ccc)",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",

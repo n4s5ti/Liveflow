@@ -68,9 +68,9 @@ class AgentInfo(BaseModel):
 
 class SessionInitMessage(BaseMessage):
     """
-    Sent once when the VS Code extension first connects.
+    Sent once when the dashboard first connects.
     Contains the full list of registered agents and which one is currently active.
-    This lets the extension draw the initial agent graph.
+    This lets the dashboard draw the initial agent graph.
     """
     type: Literal["session_init"] = "session_init"
     agents: list[AgentInfo] = []

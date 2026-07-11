@@ -7,7 +7,7 @@ const links = {
   Product: [
     { label: "Features", href: "#features" },
     { label: "How It Works", href: "#how-it-works" },
-    { label: "VS Code Extension", href: "https://marketplace.visualstudio.com/items?itemName=liveflow.liveflow" },
+    { label: "Browser Dashboard", href: "https://github.com/21lakshh/Liveflow/releases" },
     { label: "GitHub", href: "https://github.com/21lakshh/Liveflow" },
   ],
   Resources: [

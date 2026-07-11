@@ -64,7 +64,7 @@ export function StateIndicator() {
         alignItems: "center",
         gap: 16,
         padding: "8px 16px",
-        background: "var(--vscode-titleBar-activeBackground, #1a1a2e)",
+        background: "var(--liveflow-titleBar-activeBackground, #1a1a2e)",
         borderBottom: "1px solid #333",
         flexShrink: 0,
         flexWrap: "wrap",

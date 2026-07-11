@@ -3,10 +3,10 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 
 /**
- * Vite config for the Liveflow webview.
+ * Vite config for the Liveflow browser-native dashboard.
  *
- * Builds into a single JS + CSS file that the VS Code extension loads.
- * We use "iife" format because webviews can't use ES modules.
+ * Builds a standard SPA — the Python backend serves it alongside the WebSocket
+ * API on a single port.
  */
 export default defineConfig({
   plugins: [react()],
@@ -17,25 +17,6 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
-    // Single JS file — easier for VS Code webview to load
-    rollupOptions: {
-      output: {
-        entryFileNames: "index.js",
-        assetFileNames: "index.[ext]",
-        // No code splitting — everything in one bundle
-        manualChunks: undefined,
-      },
-    },
-    // IIFE format for webview compatibility
-    lib: {
-      entry: "src/main.tsx",
-      formats: ["iife"],
-      name: "LiveflowWebview",
-    },
-    cssCodeSplit: false,
-  },
-  define: {
-    // VS Code webview doesn't have process.env
-    "process.env": {},
+    sourcemap: true,
   },
 });

@@ -19,7 +19,7 @@
 
 ## What is Liveflow?
 
-Liveflow is a **zero-instrumentation debugging companion** for [LiveKit Agents](https://docs.livekit.io/agents). It monkey-patches the LiveKit SDK's `AgentSession` to capture every event — state changes, tool calls, handoffs, transcripts — and streams them over a local WebSocket to the [Liveflow VS Code extension](https://marketplace.visualstudio.com/items?itemName=liveflow.liveflow), which renders a live dashboard with:
+Liveflow is a **zero-instrumentation debugging companion** for [LiveKit Agents](https://docs.livekit.io/agents). It monkey-patches the LiveKit SDK's `AgentSession` to capture every event — state changes, tool calls, handoffs, transcripts — and streams them over a local HTTP+WebSocket server to a browser dashboard:
 
 - **Agent Graph** — all agents as nodes, active agent highlighted, animated handoff transitions
 - **Tool Timeline** — every `@function_tool` call with args, output, duration, and status
@@ -34,12 +34,6 @@ pip install liveflow
 
 ## Usage
 
-### Option 1 — VS Code Extension (recommended)
-
-Install the [Liveflow VS Code extension](https://marketplace.visualstudio.com/items?itemName=liveflow.liveflow), open your agent project, and click **Run with Liveflow** in the editor title bar. The extension handles everything automatically — no terminal command needed.
-
-### Option 2 — Terminal
-
 ```bash
 # Before
 python agent.py dev
@@ -48,17 +42,34 @@ python agent.py dev
 liveflow agent.py dev
 ```
 
-Your agent runs **exactly as before**. Liveflow captures everything transparently in the background and streams it to the VS Code dashboard.
+Your agent runs **exactly as before**. Liveflow captures everything transparently in the background and opens the dashboard at `http://127.0.0.1:<port>` in your default browser.
+
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `--dashboard-port PORT` | Bind dashboard to a specific port (default: random) |
+| `--no-open` | Don't open the browser automatically |
+| `--python PYTHON` | Python interpreter for agent subprocess |
+
+```bash
+# Custom port, no browser
+liveflow --dashboard-port 8765 --no-open agent.py dev
+
+# Explicit Python interpreter
+liveflow --python ~/venv/livekit/bin/python agent.py dev
+```
 
 ## How It Works
 
 ```
-┌──────────────────────────┐   WebSocket    ┌──────────────────────┐
-│  Liveflow Python Shim    │ ─────────────▶ │  VS Code Extension   │
-│  • Patches AgentSession  │  JSON events   │  • ReactFlow graph   │
-│  • Captures all events   │                │  • Tool timeline     │
-│  • Local WS server       │                │  • Transcript view   │
-└──────────────────────────┘                └──────────────────────┘
+┌──────────────────────────┐   HTTP + WebSocket  ┌──────────────────────┐
+│  Liveflow Python Shim    │ ──────────────────▶  │  Browser Dashboard   │
+│  • Patches AgentSession  │  JSON events + SPA  │  • ReactFlow graph   │
+│  • Captures all events   │                     │  • Tool timeline     │
+│  • Local WS + HTTP server│                     │  • Transcript view   │
+│  • Serves SPA at /       │                     │  • Chat inspector    │
+└──────────────────────────┘                     └──────────────────────┘
          ▲
          │  transparent monkey-patch
          │

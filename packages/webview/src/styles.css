@@ -15,14 +15,14 @@ body,
 }
 
 body {
-  background: var(--vscode-editor-background, #121218);
-  color: var(--vscode-editor-foreground, #cccccc);
-  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
-  font-size: var(--vscode-font-size, 13px);
+  background: var(--liveflow-editor-background, #121218);
+  color: var(--liveflow-editor-foreground, #cccccc);
+  font-family: var(--liveflow-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  font-size: var(--liveflow-font-size, 13px);
   -webkit-font-smoothing: antialiased;
 }
 
-/* Scrollbar styling (matches VS Code) */
+/* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -93,7 +93,7 @@ body {
 
 /* ReactFlow overrides for dark theme */
 .react-flow__background {
-  background: var(--vscode-editor-background, #121218) !important;
+  background: var(--liveflow-editor-background, #121218) !important;
 }
 
 .react-flow__controls button {

@@ -135,7 +135,7 @@ export function Transcript() {
                 <div
                   style={{
                     fontSize: 13,
-                    color: "var(--vscode-editor-foreground, #ccc)",
+                    color: "var(--liveflow-editor-foreground, #ccc)",
                     lineHeight: 1.4,
                     wordBreak: "break-word",
                   }}

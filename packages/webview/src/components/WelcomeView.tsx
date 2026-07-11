@@ -1,10 +1,9 @@
-import { useState } from "react";
-import { getVsCodeApi } from "@/hooks/useVscodeMessages";
 // @ts-ignore – Vite inlines small assets as base64 data URLs
 import iconUrl from "../../public/icon.png";
+import type { ConnectionState } from "@/transport/types";
 
-const SANS = "var(--vscode-font-family, system-ui, sans-serif)";
-const MONO = "var(--vscode-editor-font-family, 'JetBrains Mono', monospace)";
+const SANS = "var(--liveflow-font-family, system-ui, sans-serif)";
+const MONO = "var(--liveflow-editor-font-family, 'JetBrains Mono', monospace)";
 
 function Step({
   number,
@@ -17,7 +16,6 @@ function Step({
   code?: string;
   description?: string;
 }) {
-  const [copied, setCopied] = useState(false);
   return (
     <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
       <div
@@ -44,58 +42,54 @@ function Step({
         {code && (
           <div
             style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 8,
-              background: "#0d0d12",
-              border: "1px solid #1e1e2a",
-              borderLeft: "2px solid #2e2e3e",
-              borderRadius: 6,
-              padding: "8px 8px 8px 12px",
+              background: "#16161e",
+              border: "1px solid #2a2a38",
+              borderRadius: 5,
+              padding: "6px 10px",
+              fontSize: 11,
               fontFamily: MONO,
-              marginTop: 2,
+              color: "#aaa",
+              wordBreak: "break-all",
+              userSelect: "all",
             }}
           >
-            <code style={{ fontSize: 12, color: "#c9c9d4", wordBreak: "break-all", lineHeight: 1.5 }}>{code}</code>
-            <button
-              onClick={() => {
-                navigator.clipboard?.writeText(code).catch(() => {});
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-              }}
-              title="Copy"
-              style={{
-                background: copied ? "#22d3ee18" : "#1a1a26",
-                border: `1px solid ${copied ? "#22d3ee55" : "#2a2a38"}`,
-                borderRadius: 4,
-                cursor: "pointer",
-                color: copied ? "#22d3ee" : "#666",
-                fontSize: 13,
-                fontFamily: MONO,
-                flexShrink: 0,
-                width: 28,
-                height: 26,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                transition: "all 0.15s",
-                padding: 0,
-              }}
-            >
-              {copied ? "✓" : "⎘"}
-            </button>
+            {code}
           </div>
         )}
         {description && (
-          <p style={{ fontSize: 12, color: "#555", margin: "5px 0 0", fontFamily: SANS, lineHeight: 1.5 }}>{description}</p>
+          <div style={{ fontSize: 11, color: "#666", marginTop: 4, fontFamily: SANS }}>{description}</div>
         )}
       </div>
     </div>
   );
 }
 
-export function WelcomeView() {
+// Per-state copy and styling for the connection indicator
+const STATE_COPY: Record<
+  ConnectionState,
+  { label: string; color: string; animate?: boolean }
+> = {
+  connecting: { label: "Connecting to Liveflow...", color: "#eab308", animate: true },
+  connected: { label: "Waiting for agent...", color: "#eab308", animate: true },
+  reconnecting: {
+    label: "Connection lost. Reconnecting...",
+    color: "#f59e0b",
+    animate: true,
+  },
+  disconnected: {
+    label: "Unable to connect. Is Liveflow running?",
+    color: "#ef4444",
+    animate: false,
+  },
+};
+
+export function WelcomeView({
+  connectionState,
+}: {
+  connectionState: ConnectionState;
+}) {
+  const info = STATE_COPY[connectionState];
+
   return (
     <div
       style={{
@@ -104,8 +98,8 @@ export function WelcomeView() {
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        background: "var(--vscode-editor-background, #121218)",
-        color: "var(--vscode-editor-foreground, #ccc)",
+        background: "var(--liveflow-editor-background, #121218)",
+        color: "var(--liveflow-editor-foreground, #ccc)",
         fontFamily: SANS,
         padding: "24px 16px",
         textAlign: "center",
@@ -115,7 +109,15 @@ export function WelcomeView() {
       {/* Header */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
         <img src={iconUrl} alt="Liveflow" style={{ width: 52, height: 52, borderRadius: 12 }} />
-        <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em", color: "#fff", fontFamily: SANS }}>
+        <span
+          style={{
+            fontSize: 18,
+            fontWeight: 700,
+            letterSpacing: "-0.02em",
+            color: "#fff",
+            fontFamily: SANS,
+          }}
+        >
           Liveflow
         </span>
         <span style={{ fontSize: 12, color: "#555", fontFamily: SANS, marginTop: -4 }}>
@@ -125,7 +127,17 @@ export function WelcomeView() {
 
       {/* Steps */}
       <div style={{ textAlign: "left", width: "100%", maxWidth: 320 }}>
-        <p style={{ fontSize: 11, fontWeight: 500, color: "#555", margin: "0 0 14px", fontFamily: MONO, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+        <p
+          style={{
+            fontSize: 11,
+            fontWeight: 500,
+            color: "#555",
+            margin: "0 0 14px",
+            fontFamily: MONO,
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+          }}
+        >
           Get started
         </p>
         <Step number={1} title="Install the Python package" code="pip install liveflow" />
@@ -137,59 +149,43 @@ export function WelcomeView() {
         />
       </div>
 
-      {/* Waiting indicator */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "#888", fontFamily: MONO }}>
+      {/* Connection state indicator */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          fontSize: 11,
+          color: info.color,
+          fontFamily: MONO,
+        }}
+      >
         <span
           style={{
             display: "inline-block",
             width: 6,
             height: 6,
             borderRadius: "50%",
-            background: "#eab308",
-            animation: "lf-pulse 2s ease-in-out infinite",
+            background: info.color,
+            animation: info.animate ? "lf-pulse 2s ease-in-out infinite" : "none",
           }}
         />
-        Waiting for agent…
+        {info.label}
       </div>
-
-      {/* Or-divider */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", maxWidth: 320 }}>
-        <div style={{ flex: 1, height: 1, background: "#333" }} />
-        <span style={{ fontSize: 10, color: "#666", fontFamily: MONO }}>or</span>
-        <div style={{ flex: 1, height: 1, background: "#333" }} />
-      </div>
-
-      {/* Run button */}
-      <button
-        onClick={() => getVsCodeApi().postMessage({ type: "run_agent" })}
-        style={{
-          background: "#22d3ee",
-          color: "#000",
-          border: "none",
-          borderRadius: 5,
-          padding: "10px 24px",
-          fontSize: 13,
-          fontWeight: 600,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          fontFamily: SANS,
-          width: "100%",
-          maxWidth: 320,
-          justifyContent: "center",
-        }}
-      >
-        ▶ Run with Liveflow
-      </button>
 
       {/* Support links */}
       <div style={{ fontSize: 11, color: "#444", lineHeight: 1.8, fontFamily: SANS }}>
-        <a href="mailto:2005lakshyapaliwal@gmail.com" style={{ color: "#3b82f6", textDecoration: "none" }}>
+        <a
+          href="mailto:2005lakshyapaliwal@gmail.com"
+          style={{ color: "#3b82f6", textDecoration: "none" }}
+        >
           Contact support
         </a>
         <span style={{ margin: "0 6px" }}>·</span>
-        <a href="https://cal.com/lakshya-paliwal/30min" style={{ color: "#3b82f6", textDecoration: "none" }}>
+        <a
+          href="https://cal.com/lakshya-paliwal/30min"
+          style={{ color: "#3b82f6", textDecoration: "none" }}
+        >
           Book a call
         </a>
       </div>
@@ -203,5 +199,3 @@ export function WelcomeView() {
     </div>
   );
 }
-
-
